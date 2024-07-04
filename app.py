@@ -1,10 +1,9 @@
 from flask import Flask, render_template, redirect, url_for, request, flash, jsonify
 from pytube import Playlist, YouTube
 import os
-from io import BytesIO
 import logging
 from urllib.parse import urlparse
-from concurrent.futures import ThreadPoolExecutor
+from io import BytesIO
 import boto3
 
 app = Flask(__name__)
@@ -26,22 +25,6 @@ bucket_name = os.environ.get('AWS_STORAGE_BUCKET_NAME')
 def is_valid_url(url):
     parsed = urlparse(url)
     return parsed.scheme in ('http', 'https') and 'youtube.com' in parsed.netloc
-
-def fetch_video_data(video):
-    try:
-        return {'title': video.title, 'url': video.watch_url}
-    except Exception as e:
-        logger.error(f"Error fetching video data: {e}")
-        return None
-
-def upload_to_s3(buffer, filename):
-    try:
-        s3_client.upload_fileobj(buffer, bucket_name, filename)
-        file_url = f"https://{bucket_name}.s3.amazonaws.com/{filename}"
-        return file_url
-    except Exception as e:
-        logger.error(f"Error uploading to S3: {e}")
-        return None
 
 @app.route('/')
 def index():
@@ -65,9 +48,7 @@ def busqueda():
     logger.info(f"Buscando playlist URL: {playlist_url}")
     try:
         playlist = Playlist(playlist_url)
-        with ThreadPoolExecutor() as executor:
-            videos = list(executor.map(fetch_video_data, playlist.videos))
-        videos = [video for video in videos if video is not None]
+        videos = [{'title': video.title, 'url': video.watch_url} for video in playlist.videos]
         logger.info(f"Videos encontrados: {videos}")
         return render_template('busqueda.html', videos=videos)
     except Exception as e:
@@ -75,29 +56,44 @@ def busqueda():
         flash(f"Error al obtener la playlist: {e}", 'danger')
         return redirect(url_for('inicio'))
 
+@app.route('/generate-presigned-url', methods=['POST'])
+def generate_presigned_url():
+    video_url = request.form['video_url']
+    logger.info(f"Generating presigned URL for video: {video_url}")
+    try:
+        yt = YouTube(video_url)
+        stream = yt.streams.filter(only_audio=True, abr="320kbps").first()
+        if stream is None:
+            return jsonify({'error': 'No se encontró ningún flujo de audio con la tasa de bits especificada.'}), 400
+        
+        filename = f"{yt.title}.mp3"
+        presigned_url = s3_client.generate_presigned_url('put_object',
+                                                         Params={'Bucket': bucket_name, 'Key': filename},
+                                                         ExpiresIn=3600)
+        return jsonify({"presigned_url": presigned_url, "filename": filename})
+    except Exception as e:
+        logger.error(f"Error generating presigned URL: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/download', methods=['POST'])
 def download():
     video_url = request.form['video_url']
     logger.info(f"Downloading video from URL: {video_url}")
     try:
         yt = YouTube(video_url)
-        stream = yt.streams.filter(only_audio=True, abr="160kbps").first()
+        stream = yt.streams.filter(only_audio=True, abr="320kbps").first()
         if stream is None:
-            flash('No se encontró ningún flujo de audio con la tasa de bits especificada.', 'danger')
-            return redirect(url_for('inicio'))
+            return jsonify({'error': 'No se encontró ningún flujo de audio con la tasa de bits especificada.'}), 400
+
         buffer = BytesIO()
         stream.stream_to_buffer(buffer)
         buffer.seek(0)
-        filename = f"{yt.title}.mp3"
-        file_url = upload_to_s3(buffer, filename)
-        if file_url:
-            return jsonify({"url": file_url})
-        else:
-            flash('Error subiendo el archivo a S3.', 'danger')
+        file_data = buffer.read()
+
+        return jsonify({"file": file_data, "size": len(file_data)})
     except Exception as e:
         logger.error(f"Error during download: {e}")
-        flash(f'Error en la descarga: {e}', 'danger')
-    return redirect(url_for('inicio'))
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=False)

@@ -5,6 +5,67 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Descargador de Playlist de YouTube</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=1.8" />
+    <script>
+        async function handleDownload(videoUrl) {
+            try {
+                // Generar la URL prefirmada
+                const presignedResponse = await fetch('/generate-presigned-url', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ video_url: videoUrl })
+                });
+
+                const presignedData = await presignedResponse.json();
+                if (presignedResponse.status !== 200) {
+                    alert(presignedData.error);
+                    return;
+                }
+
+                const { presigned_url, filename } = presignedData;
+
+                // Descargar el archivo desde YouTube
+                const downloadResponse = await fetch('/download', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ video_url: videoUrl })
+                });
+
+                const downloadData = await downloadResponse.json();
+                if (downloadResponse.status !== 200) {
+                    alert(downloadData.error);
+                    return;
+                }
+
+                const fileData = downloadData.file;
+
+                // Verificar el tamaño del archivo
+                const maxSize = 100 * 1024 * 1024; // 100 MB
+                if (fileData.size > maxSize) {
+                    alert('El archivo es demasiado grande para ser subido.');
+                    return;
+                }
+
+                // Subir a S3 usando la URL prefirmada
+                const uploadResponse = await fetch(presigned_url, {
+                    method: 'PUT',
+                    body: new Blob([fileData], { type: 'audio/mpeg' })
+                });
+
+                if (uploadResponse.status === 200) {
+                    alert('Archivo subido exitosamente a S3.');
+                } else {
+                    alert('Error subiendo el archivo a S3.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error durante el proceso de descarga y subida.');
+            }
+        }
+    </script>
 </head>
 <body>
     <nav class="navbar">
@@ -22,9 +83,19 @@
             {% endif %}
         {% endwith %}
         <form action="/busqueda" method="post">
-            <input type="url" name="playlist_url" placeholder="Introduce la URL de la playlist" required>
+            <input type="text" name="playlist_url" placeholder="Introduce la URL de la playlist" required>
             <button type="submit">Extraer Videos</button>
         </form>
+    </div>
+    <div class="container">
+        <ul>
+            {% for video in videos %}
+            <li>
+                <span>{{ video.title }}</span>
+                <button onclick="handleDownload('{{ video.url }}')">Descargar MP3</button>
+            </li>
+            {% endfor %}
+        </ul>
     </div>
 </body>
 </html>
