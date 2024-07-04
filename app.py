@@ -88,7 +88,8 @@ def download():
         buffer = BytesIO()
         stream.stream_to_buffer(buffer)
         buffer.seek(0)
-        file_url = upload_to_s3(buffer, f"{yt.title}.mp3")
+        filename = f"{yt.title}.mp3"
+        file_url = upload_to_s3(buffer, filename)
         if file_url:
             return jsonify({"url": file_url})
         else:
