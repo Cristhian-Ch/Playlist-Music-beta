@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Descargador de Playlist de YouTube</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=1.8" />
+</head>
+<body>
+    <nav class="navbar">
+        <a href="{{ url_for('inicio') }}" class="navbar-brand">YouTube Downloader</a>
+    </nav>
+    <div class="center-container">
+        <h1>Descargador de Playlist de YouTube</h1>
+        {% with messages = get_flashed_messages(with_categories=True) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="alert {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        <form action="/busqueda" method="post">
+            <input type="url" name="playlist_url" placeholder="Introduce la URL de la playlist" required>
+            <button type="submit">Extraer Videos</button>
+        </form>
+    </div>
+</body>
+</html>

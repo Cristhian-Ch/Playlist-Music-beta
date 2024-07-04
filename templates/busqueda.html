@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Descargador de Playlist de YouTube</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v=1.8" />
+</head>
+<body>
+    <nav class="navbar">
+        <a href="{{ url_for('inicio') }}" class="navbar-brand">YouTube Downloader</a>
+    </nav>
+    <div class="container">
+        <h1>Descargador de Playlist de YouTube</h1>
+        {% with messages = get_flashed_messages(with_categories=True) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="alert {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        <h2>Selecciona los videos a descargar</h2>
+        <div class="list-container">
+            <ul>
+                {% for video in videos %}
+                <li>
+                    <span>{{ video.title }}</span>
+                    <form action="/download" method="post">
+                        <input type="hidden" name="video_url" value="{{ video.url }}">
+                        <button type="submit">Descargar MP3</button>
+                    </form>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
