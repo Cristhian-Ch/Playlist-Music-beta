@@ -1,7 +1,6 @@
 from flask import Flask, render_template, redirect, url_for, request, flash, jsonify
 from pytube import Playlist, YouTube
 import os
-from io import BytesIO
 import logging
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor
@@ -34,14 +33,15 @@ def fetch_video_data(video):
         logger.error(f"Error fetching video data: {e}")
         return None
 
-def upload_to_s3(buffer, filename):
+def create_presigned_url(object_name):
     try:
-        s3_client.upload_fileobj(buffer, bucket_name, filename)
-        file_url = f"https://{bucket_name}.s3.amazonaws.com/{filename}"
-        return file_url
+        response = s3_client.generate_presigned_url('put_object',
+                                                    Params={'Bucket': bucket_name, 'Key': object_name},
+                                                    ExpiresIn=3600)
     except Exception as e:
-        logger.error(f"Error uploading to S3: {e}")
+        logger.error(f"Error generating presigned URL: {e}")
         return None
+    return response
 
 @app.route('/')
 def index():
@@ -85,15 +85,19 @@ def download():
         if stream is None:
             flash('No se encontró ningún flujo de audio con la tasa de bits especificada.', 'danger')
             return redirect(url_for('inicio'))
+        
+        # Generar una URL prefirmada para la subida
+        presigned_url = create_presigned_url(f"{yt.title}.mp3")
+        if not presigned_url:
+            flash('Error generando la URL prefirmada.', 'danger')
+            return redirect(url_for('inicio'))
+
         buffer = BytesIO()
         stream.stream_to_buffer(buffer)
         buffer.seek(0)
-        filename = f"{yt.title}.mp3"
-        file_url = upload_to_s3(buffer, filename)
-        if file_url:
-            return jsonify({"url": file_url})
-        else:
-            flash('Error subiendo el archivo a S3.', 'danger')
+
+        # Aquí puedes devolver la URL prefirmada al cliente para que haga la subida
+        return jsonify({"presigned_url": presigned_url, "filename": f"{yt.title}.mp3", "file": buffer.read()})
     except Exception as e:
         logger.error(f"Error during download: {e}")
         flash(f'Error en la descarga: {e}', 'danger')
